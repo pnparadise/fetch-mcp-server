@@ -1,0 +1,51 @@
+name: Deploy to Kubernetes
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'k8s/**'
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/deploy.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known_hosts: ${{ secrets.KNOWN_HOSTS }}
+
+      - name: Push code and deploy
+        id: deploy
+        run: |
+          # 同步代码到宿主机
+          rsync -avz --delete ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.APP_PATH }}/
+          
+          # 在宿主机上执行部署命令
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd ${{ secrets.APP_PATH }} && \
+            sed -i 's|/path/to/your/app|${{ secrets.APP_PATH }}|g' k8s/mcp-server.yaml && \
+            kubectl apply -f k8s/mcp-server.yaml && \
+            kubectl rollout restart deployment mcp-server && \
+            kubectl rollout status deployment mcp-server --timeout=300s && \
+            kubectl get pods -l app=mcp-server && \
+            kubectl get svc mcp-server"
+
+      - name: Notify success
+        if: success()
+        run: |
+          curl -G "https://push.889990.xyz" --data-urlencode "msg=MCP Server deployment successful"
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          curl -G "https://push.889990.xyz" --data-urlencode "msg=MCP Server deployment failed"

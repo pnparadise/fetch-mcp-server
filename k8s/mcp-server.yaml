@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mcp-server-node-modules
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/data/mcp-server/node_modules"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mcp-server-node-modules-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-server
+  labels:
+    app: mcp-server
+spec:
+  ports:
+    - port: 3001
+      targetPort: 3001
+      protocol: TCP
+      name: http
+  selector:
+    app: mcp-server
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: mcp-server
+  namespace: default
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`mcp.889990.xyz`)
+      kind: Rule
+      services:
+        - name: mcp-server
+          port: 3001
+  tls:
+    secretName: xyz-tls
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-server
+  labels:
+    app: mcp-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-server
+  template:
+    metadata:
+      labels:
+        app: mcp-server
+    spec:
+      containers:
+        - name: mcp-server
+          image: mcr.microsoft.com/playwright:v1.51.1-noble
+          command:
+            - sh
+            - -c
+            - cd /app && npm install --production && npm start
+          ports:
+            - containerPort: 3001
+              name: http
+          env:
+            - name: PROXY
+              value: "http://clash:1080"
+            - name: PORT
+              value: "3001"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          volumeMounts:
+            - name: app-source
+              mountPath: /app
+            - name: node-modules
+              mountPath: /app/node_modules
+      volumes:
+        - name: app-source
+          hostPath:
+            path: /path/to/your/app  # 替换为实际的应用源码路径
+        - name: node-modules
+          persistentVolumeClaim:
+            claimName: mcp-server-node-modules-claim
