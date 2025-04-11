@@ -8,6 +8,7 @@ on:
       - 'k8s/**'
       - 'src/**'
       - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/deploy.yml'
 
 jobs:
@@ -24,15 +25,15 @@ jobs:
         with:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           known_hosts: ${{ secrets.KNOWN_HOSTS }}
+          if_key_exists: replace
 
-      - name: Push code and deploy
+      - name: Deploy to server
         id: deploy
         run: |
-          # 同步代码到宿主机
-          rsync -avz --delete ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.APP_PATH }}/
-          
-          # 在宿主机上执行部署命令
+          # 在宿主机上执行git命令和部署命令
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd ${{ secrets.APP_PATH }} && \
+            git fetch origin main && \
+            git reset --hard origin/main && \
             sed -i 's|/path/to/your/app|${{ secrets.APP_PATH }}|g' k8s/mcp-server.yaml && \
             kubectl apply -f k8s/mcp-server.yaml && \
             kubectl rollout restart deployment mcp-server && \
